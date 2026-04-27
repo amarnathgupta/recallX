@@ -1,5 +1,6 @@
 import asyncio
-import asyncpg
+from sqlalchemy import create_engine, text
+# import asyncpg
 from qdrant_client import QdrantClient
 from neo4j import GraphDatabase
 import redis
@@ -31,16 +32,26 @@ def retry_sync(func, retries=10, delay=2):
 
 
 # 🔌 checks
-async def check_postgres():
-    conn = await asyncpg.connect(
-        user=settings.POSTGRES_USER,
-        password=settings.POSTGRES_PASSWORD,
-        database=settings.POSTGRES_DB,
-        host=settings.POSTGRES_HOST,
-        port=settings.POSTGRES_PORT,
+# async def check_postgres():
+def check_postgres():
+    engine = create_engine(
+        f"postgresql://{settings.POSTGRES_USER}:{settings.POSTGRES_PASSWORD}"
+        f"@{settings.POSTGRES_HOST}:{settings.POSTGRES_PORT}/{settings.POSTGRES_DB}"
     )
-    await conn.close()
+
+    with engine.connect() as conn:
+        conn.execute(text("SELECT 1"))
+
     print("✅ PostgreSQL ready")
+    # conn = await asyncpg.connect(
+    #     user=settings.POSTGRES_USER,
+    #     password=settings.POSTGRES_PASSWORD,
+    #     database=settings.POSTGRES_DB,
+    #     host=settings.POSTGRES_HOST,
+    #     port=settings.POSTGRES_PORT,
+    # )
+    # await conn.close()
+    # print("✅ PostgreSQL ready")
 
 
 def check_qdrant():
@@ -77,11 +88,14 @@ def check_redis():
 async def wait_for_services():
     print("⏳ Waiting for services...")
 
-    await retry_async(check_postgres)
+    # await retry_async(check_postgres)
 
-    await asyncio.to_thread(retry_sync, check_qdrant)
-    await asyncio.to_thread(retry_sync, check_neo4j)
-    await asyncio.to_thread(retry_sync, check_redis)
+    await asyncio.gather(
+        asyncio.to_thread(retry_sync, check_postgres),
+        asyncio.to_thread(retry_sync, check_qdrant),
+        asyncio.to_thread(retry_sync, check_neo4j),
+        asyncio.to_thread(retry_sync, check_redis),
+    )
 
     print("🚀 All services are ready!")
 
